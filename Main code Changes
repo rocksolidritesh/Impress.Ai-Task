@@ -1,0 +1,102 @@
+# core/constants.py
+
+BOT_WELCOME_MESSAGE = "Welcome to the Python Quiz! Let's get started with the first question."
+
+PYTHON_QUESTION_LIST = [
+    {"id": 1, "question": "What is Python?", "correct_answer": "A programming language"},
+    {"id": 2, "question": "What does OOP stand for?", "correct_answer": "Object-Oriented Programming"},
+    # Add more questions as needed
+]
+
+# core/reply_factory.py
+
+def generate_bot_responses(message, session):
+    bot_responses = []
+
+    current_question_id = session.get("current_question_id")
+    if not current_question_id:
+        bot_responses.append(BOT_WELCOME_MESSAGE)
+
+    success, error = record_current_answer(message, current_question_id, session)
+
+    if not success:
+        return [error]
+
+    next_question, next_question_id = get_next_question(current_question_id)
+
+    if next_question:
+        bot_responses.append(next_question)
+    else:
+        final_response = generate_final_response(session)
+        bot_responses.append(final_response)
+
+    session["current_question_id"] = next_question_id
+    session.save()
+
+    return bot_responses
+
+
+def record_current_answer(answer, current_question_id, session):
+    if current_question_id is None:
+        return False, "No current question to record answer for."
+
+    if not answer.strip():
+        return False, "Answer cannot be empty."
+
+    session.setdefault("answers", {})[current_question_id] = answer.strip()
+    session.save()
+    return True, ""
+
+
+def get_next_question(current_question_id):
+    if current_question_id is None:
+        return PYTHON_QUESTION_LIST[0]["question"], PYTHON_QUESTION_LIST[0]["id"]
+
+    current_index = next((index for (index, d) in enumerate(PYTHON_QUESTION_LIST) if d["id"] == current_question_id), None)
+
+    if current_index is None or current_index == len(PYTHON_QUESTION_LIST) - 1:
+        return None, None
+
+    next_index = current_index + 1
+    next_question = PYTHON_QUESTION_LIST[next_index]["question"]
+    next_question_id = PYTHON_QUESTION_LIST[next_index]["id"]
+
+    return next_question, next_question_id
+
+
+def generate_final_response(session):
+    answers = session.get("answers", {})
+    score = 0
+
+    for question in PYTHON_QUESTION_LIST:
+        qid = question["id"]
+        correct_answer = question["correct_answer"]
+        user_answer = answers.get(qid, "").strip().lower()
+        if user_answer == correct_answer.strip().lower():
+            score += 1
+
+    total_questions = len(PYTHON_QUESTION_LIST)
+    result_message = f"Quiz completed! You scored {score} out of {total_questions}."
+    
+    return result_message
+
+# test_quiz_bot.py
+
+class MockSession(dict):
+    def save(self):
+        pass
+
+def test_quiz_bot():
+    session = MockSession()
+    message = "start quiz"
+    
+    responses = generate_bot_responses(message, session)
+    print(responses[-1])
+
+    for question in PYTHON_QUESTION_LIST:
+        current_question_id = session["current_question_id"]
+        user_answer = question["correct_answer"]
+        responses = generate_bot_responses(user_answer, session)
+        print(responses[-1])
+
+test_quiz_bot()
